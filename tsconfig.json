@@ -5,7 +5,9 @@
     "moduleResolution": "Bundler",
     "outDir": "dist",
     "strict": true,
-    "esModuleInterop": true
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "types": ["node"]
   },
   "include": ["server.ts"]
 }
