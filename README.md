@@ -1,169 +1,176 @@
-# MCP x402 Railway Server
+# Google Sheets x402 MCP Server
 
-A Model Context Protocol (MCP) server that enables AI agents to access paywalled Google Sheets (or any x402-protected resources) using automatic micropayments on Base Sepolia.
+An MCP (Model Context Protocol) server that provides access to Google Sheets data through the x402 payment protocol. This server acts as a bridge between Claude Desktop (or any MCP-compatible client) and a paid Google Sheets API, automatically handling payments using your Ethereum wallet.
 
 ## Features
 
-- **WebSocket Transport**: Remote MCP server accessible via `wss://`
-- **x402 Auto-Payment**: Automatically pays for 402-protected resources using testnet wallet
-- **CSV Parsing**: Fetches and parses Google Sheets CSV data
-- **Railway-Ready**: Optimized for one-click Railway deployment
+- **Two MCP Tools**:
+  - `get_sheet`: Fetch specific Google Sheet data with optional range parameter
+  - `list-sheets`: List all available sheets from the API
+- **Automatic Payment Handling**: Uses x402 protocol to handle HTTP 402 payment requests
+- **Ethereum-based Payments**: Payments are made with USDC on Base (Sepolia testnet or Mainnet)
 
-## Local Development
+## Prerequisites
 
-### Prerequisites
+- Node.js (v20 or higher)
+- An x402-compatible Google Sheets API server
+- An Ethereum wallet with USDC (on Base Sepolia or Base Mainnet)
+- Claude Desktop with MCP support
 
-- Node.js 18+
-- Base Sepolia testnet private key with funds ([faucet](https://www.coinbase.com/faucets/base-ethereum-sepolia-faucet))
-- A vending URL for your paywalled resource
+## Installation
 
-### Setup
+1. Clone this repository:
+```bash
+git clone <your-repo-url>
+cd mcp-googlesheet-vendor
+```
 
-1. **Install dependencies**:
-   ```bash
-   npm install
-   ```
+2. Install dependencies:
+```bash
+npm install
+```
 
-2. **Configure environment**:
-   ```bash
-   cp .env.example .env
-   ```
-   Edit `.env` and set:
-   - `PRIVATE_KEY`: Your Base Sepolia private key (0x...)
-   - `PAID_SHEET_URL`: Your vending URL (e.g., `https://vender.run/@you/sheets/products.csv`)
-   - `PORT`: Local port (default: 8080)
+3. Create a `.env` file based on `.env.example`:
+```bash
+cp .env.example .env
+```
 
-3. **Run locally**:
-   ```bash
-   npm run dev
-   ```
+4. Configure your environment variables in `.env`:
+```env
+PRIVATE_KEY=0xYourEthereumPrivateKeyHere
+GOOGLESHEET_API_URL=http://localhost:4021
+```
 
-4. **Test WebSocket endpoint**:
-   ```
-   ws://localhost:8080/ws
-   ```
+## Configuration
 
-## Railway Deployment
+### Environment Variables
 
-### One-Click Deploy
+- `PRIVATE_KEY`: Your Ethereum wallet's private key (for signing payments)
+- `GOOGLESHEET_API_URL`: The base URL of your x402-compatible Google Sheets API
 
-1. **Push to GitHub**:
-   ```bash
-   git init
-   git add .
-   git commit -m "Initial commit"
-   git remote add origin <your-repo-url>
-   git push -u origin main
-   ```
+## Usage
 
-2. **Deploy on Railway**:
-   - Go to [Railway](https://railway.app)
-   - Click **New Project** → **Deploy from GitHub**
-   - Select your repository
-   - Railway auto-detects Node.js and builds
+### Development Mode
 
-3. **Set Environment Variables**:
-   In Railway dashboard → Variables tab, add:
-   ```
-   PRIVATE_KEY=0xYOUR_TESTNET_PRIVATE_KEY
-   PAID_SHEET_URL=https://vender.run/@you/sheets/products.csv
-   ```
-   (Railway automatically provides `PORT`)
+Run the server in development mode with auto-reload:
+```bash
+npm run dev
+```
 
-4. **Get Your WebSocket URL**:
-   After deployment, Railway provides a domain like:
-   ```
-   https://mcp-x402-abc123.up.railway.app
-   ```
-   Your MCP WebSocket endpoint is:
-   ```
-   wss://mcp-x402-abc123.up.railway.app/ws
-   ```
+### Production Mode
 
-## Client Configuration
+Build and run the compiled server:
+```bash
+npm run build
+npm start
+```
 
-### Claude Desktop
+## Adding to Claude Desktop
 
-Add to your Claude Desktop MCP settings:
+To use this MCP server with Claude Desktop:
+
+1. Open Claude Desktop and navigate to MCP settings
+2. Add the following configuration to your `mcp_settings.json`:
 
 ```json
 {
   "mcpServers": {
-    "x402-sheets": {
-      "transport": "websocket",
-      "url": "wss://your-railway-app.up.railway.app/ws"
+    "googlesheet-x402": {
+      "command": "npm",
+      "args": [
+        "run",
+        "--silent",
+        "dev"
+      ],
+      "cwd": "/absolute/path/to/mcp-googlesheet-vendor",
+      "env": {
+        "PRIVATE_KEY": "0xYourEthereumPrivateKeyHere",
+        "GOOGLESHEET_API_URL": "http://localhost:4021"
+      }
     }
   }
 }
 ```
 
-### Tool Usage
+3. Restart Claude Desktop
+4. The tools will now be available in Claude's tool palette
 
-Invoke the `get_sheet_csv` tool:
+## Available MCP Tools
 
-```json
-{
-  "tool": "get_sheet_csv",
-  "arguments": {
-    "maxRows": 50
-  }
-}
+### get_sheet
+
+Fetches data from a specific Google Sheet.
+
+**Parameters:**
+- `sheetId` (string, required): The Google Sheet ID to fetch data from
+- `range` (string, optional): The range to fetch (e.g., 'Sheet1!A1:D10'). If not provided, fetches all data.
+
+**Example usage in Claude:**
+```
+Can you fetch data from sheet ID "abc123" with range "Sheet1!A1:D10"?
 ```
 
-**What happens**:
-1. Server fetches your `PAID_SHEET_URL`
-2. Gets `402 Payment Required` response
-3. Automatically pays using configured wallet
-4. Retries request and returns CSV data
-5. Parses CSV into JSON rows
+### list-sheets
+
+Lists all available sheets from the Google Sheets API.
+
+**Parameters:** None
+
+**Example usage in Claude:**
+```
+Show me all available sheets
+```
 
 ## How It Works
 
-```mermaid
-sequenceDiagram
-    Agent->>MCP Server: get_sheet_csv
-    MCP Server->>Vending URL: GET /sheet.csv
-    Vending URL-->>MCP Server: 402 Payment Required
-    MCP Server->>Base Sepolia: Pay invoice
-    Base Sepolia-->>MCP Server: Payment confirmed
-    MCP Server->>Vending URL: GET /sheet.csv (with receipt)
-    Vending URL-->>MCP Server: 200 OK + CSV data
-    MCP Server-->>Agent: Parsed JSON rows
-```
-
-## Architecture
-
-- **MCP SDK**: Standard Model Context Protocol implementation
-- **x402-fetch**: Wrapper that intercepts 402 responses and pays invoices
-- **viem**: Ethereum wallet client for Base Sepolia transactions
-- **WebSocket**: Required for remote MCP transport (HTTP not supported)
+1. When Claude (or another MCP client) calls a tool, the MCP server sends a request to your x402-compatible Google Sheets API
+2. If the API requires payment (HTTP 402), the x402-axios interceptor automatically:
+   - Detects the payment requirement
+   - Creates and signs a payment transaction using your wallet
+   - Submits the payment
+   - Retries the original request
+3. The API returns the requested data
+4. The MCP server forwards the data back to Claude
 
 ## Security Notes
 
-- **Testnet Only**: This example uses Base Sepolia for safety
-- **Key Management**: Store `PRIVATE_KEY` in Railway environment variables only
-- **Never Commit Secrets**: `.env` is gitignored
-- **Rotate Keys**: Use dedicated testnet wallets for demos
+- Never commit your `.env` file or expose your private key
+- Use testnet (Base Sepolia) for development
+- Ensure your wallet has sufficient USDC for API payments
+- Store your private key securely
+
+## Development
+
+### Project Structure
+
+```
+mcp-googlesheet-vendor/
+├── server.ts           # Main MCP server implementation
+├── package.json        # Dependencies and scripts
+├── tsconfig.json       # TypeScript configuration
+├── .env.example        # Environment variables template
+├── .gitignore         # Git ignore rules
+└── README.md          # This file
+```
+
+### Building the x402 Google Sheets API
+
+This MCP server requires an x402-compatible API that serves Google Sheets data. You'll need to:
+
+1. Create an API that integrates with Google Sheets API
+2. Implement x402 payment requirements (HTTP 402 responses)
+3. Accept payments in USDC on Base network
+4. Return sheet data after successful payment
+
+Refer to the [x402 protocol documentation](https://github.com/coinbase/x402) for implementation details.
 
 ## Troubleshooting
 
-| Issue | Solution |
-|-------|----------|
-| App won't start | Verify `PRIVATE_KEY` and `PAID_SHEET_URL` are set in Railway |
-| Client can't connect | Confirm WebSocket URL uses `/ws` path |
-| Payment fails | Check wallet has Base Sepolia ETH + test USDC |
-| CSV parsing errors | Ensure vending URL returns valid CSV format |
-
-## Extending
-
-Replace `PAID_SHEET_URL` with any x402-protected resource:
-- Notion page proxy
-- AI summarization API
-- Private database query endpoint
-- Custom vended content
-
-No code changes needed—just update the environment variable.
+- **Module not found errors**: Run `npm install` to ensure all dependencies are installed
+- **Payment failures**: Check your wallet has sufficient USDC and the correct network is configured
+- **API connection errors**: Verify your `GOOGLESHEET_API_URL` is correct and the API is running
+- **MCP connection issues**: Ensure the `cwd` path in your MCP settings points to the correct directory
 
 ## License
 
-MIT# mcp-googlesheet-vendor
+MIT
